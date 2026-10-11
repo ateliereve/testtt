@@ -1897,7 +1897,42 @@ input[type="range"] { accent-color:#171717; }
     }
   }
 
-  function drawBooth(c, w, h, p) {
+  function applyLumaDither(ctx, x, y, w, h, strength=3.2, threshold=168) {
+    const ix=Math.max(0,Math.floor(x));
+    const iy=Math.max(0,Math.floor(y));
+    const iw=Math.max(1,Math.round(w));
+    const ih=Math.max(1,Math.round(h));
+    if(!iw || !ih) return;
+    const img=ctx.getImageData(ix,iy,iw,ih);
+    const data=img.data;
+    const bayer4=[
+      -0.46875, 0.03125,-0.34375, 0.15625,
+       0.28125,-0.21875, 0.40625,-0.09375,
+      -0.28125, 0.21875,-0.40625, 0.09375,
+       0.46875,-0.03125, 0.34375,-0.15625
+    ];
+    for(let yy=0;yy<ih;yy++){
+      for(let xx=0;xx<iw;xx++){
+        const i=(yy*iw+xx)*4;
+        const a=data[i+3];
+        if(a===0) continue;
+        const r=data[i], g=data[i+1], b=data[i+2];
+        const max=Math.max(r,g,b), min=Math.min(r,g,b);
+        const lum=.2126*r+.7152*g+.0722*b;
+        if(lum<threshold) continue;
+        const sat=max===0 ? 0 : (max-min)/max;
+        const bright=Math.min(1,(lum-threshold)/68);
+        const amt=strength*(0.45+bright*0.9)*(1-sat*0.35);
+        const n=bayer4[(yy&3)*4+(xx&3)]*amt;
+        data[i]=clamp(Math.round(r+n),0,255);
+        data[i+1]=clamp(Math.round(g+n),0,255);
+        data[i+2]=clamp(Math.round(b+n),0,255);
+      }
+    }
+    ctx.putImageData(img,ix,iy);
+  }
+
+  function drawBooth(c, w, h, p, opts={}) {
     const s0 = w / 1500;
     const t = p * Math.PI * 2;
     const cfg = motionConfig();
@@ -1945,9 +1980,10 @@ input[type="range"] { accent-color:#171717; }
       }
       drawBoothSticker(boothCtx, holeX, holeY, holeW, holeH, p);
       const glow = boothCtx.createLinearGradient(holeX, holeY, holeX, holeY + holeH);
-      glow.addColorStop(0, 'rgba(255,255,255,.12)'); glow.addColorStop(.18, 'rgba(255,255,255,.035)');
-      glow.addColorStop(.62, 'rgba(255,255,255,0)'); glow.addColorStop(1, 'rgba(24,28,34,.045)');
+      glow.addColorStop(0, 'rgba(255,255,255,.09)'); glow.addColorStop(.22, 'rgba(255,255,255,.022)');
+      glow.addColorStop(.64, 'rgba(255,255,255,0)'); glow.addColorStop(1, 'rgba(24,28,34,.028)');
       boothCtx.fillStyle = glow; boothCtx.fillRect(holeX, holeY, holeW, holeH);
+      if (opts.quantizeAssist) applyLumaDither(boothCtx, holeX, holeY, holeW, holeH, 3.4, 162);
       boothCtx.restore();
       boothCtx.drawImage(frame, srcX, srcY, srcW, srcH, 0, 0, srcW, srcH);
     }
@@ -2044,7 +2080,7 @@ input[type="range"] { accent-color:#171717; }
     c.shadowBlur=(15+9.5*motion)*s0; c.shadowOffsetY=(5.2+3.6*motion)*s0;
     roundRectPath(c,x,y,bw,bh,r);
     const bg=c.createLinearGradient(x,y,x,y+bh);
-    bg.addColorStop(0,'rgba(255,255,255,.985)'); bg.addColorStop(.62,'rgba(250,250,252,.978)'); bg.addColorStop(1,'rgba(244,244,247,.97)');
+    bg.addColorStop(0,'rgba(255,255,255,.984)'); bg.addColorStop(.58,'rgba(248,248,250,.978)'); bg.addColorStop(1,'rgba(244,244,246,.974)');
     c.fillStyle=bg; c.fill();
     c.shadowColor='transparent';
     roundRectPath(c,x+.7*s0,y+.7*s0,bw-1.4*s0,bh-1.4*s0,r-.7*s0);
@@ -2196,9 +2232,9 @@ input[type="range"] { accent-color:#171717; }
     c.shadowBlur=(13+9*motion)*s0; c.shadowOffsetY=(5.2+3.3*motion)*s0;
     bubblePath(c,x,y,bw,bh,side,s0);
     const fill=c.createLinearGradient(x,y,x,y+bh+tailExtra);
-    fill.addColorStop(0, darkBubble ? mixHexColors(bubbleColor,'#ffffff',.08) : mixHexColors(bubbleColor,'#ffffff',.34));
-    fill.addColorStop(.56, bubbleColor);
-    fill.addColorStop(1, darkBubble ? mixHexColors(bubbleColor,'#000000',.10) : mixHexColors(bubbleColor,'#d7dae0',.22));
+    fill.addColorStop(0, darkBubble ? mixHexColors(bubbleColor,'#ffffff',.06) : mixHexColors(bubbleColor,'#ffffff',.22));
+    fill.addColorStop(.6, bubbleColor);
+    fill.addColorStop(1, darkBubble ? mixHexColors(bubbleColor,'#000000',.06) : mixHexColors(bubbleColor,'#d7dae0',.12));
     c.fillStyle=fill;c.fill();
     c.shadowColor='transparent'; bubblePath(c,x+.5*s0,y+.5*s0,bw-1*s0,bh-1*s0,side,s0);
     c.strokeStyle=darkBubble?'rgba(255,255,255,.11)':'rgba(255,255,255,.38)'; c.lineWidth=.75*s0;c.stroke();
@@ -2230,7 +2266,7 @@ input[type="range"] { accent-color:#171717; }
     c.fillStyle='#dbe4ee';c.fillRect(0,0,w,h);
     drawBackground(c,w,h,sceneP,opts);
     if (!opts.backgroundOnly) {
-      drawBooth(c,w,h,sceneP);
+      drawBooth(c,w,h,sceneP,opts);
       drawMessages(c,w,h,sceneP);
     }
     drawVignette(c,w,h);
@@ -2714,7 +2750,7 @@ input[type="range"] { accent-color:#171717; }
 
     const points=[.04,.12,.22,.32,.42,.52,.62,.72,.82,.91,.97];
     for(const p of points){
-      renderScene(sc,sampleW,sampleH,p,{staticBackground:true});
+      renderScene(sc,sampleW,sampleH,p,{staticBackground:true,quantizeAssist:true});
       const data=sc.getImageData(0,0,sampleW,sampleH).data;
       for(let i=0;i<data.length;i+=4){
         const dr=Math.abs(data[i]-base[i]);
@@ -2775,7 +2811,7 @@ input[type="range"] { accent-color:#171717; }
     const unique=points.filter((p,i,a)=>a.findIndex(q=>Math.abs(q-p)<.015)===i);
 
     for(const p of unique){
-      renderScene(sc,sampleW,sampleH,p,{staticBackground:true});
+      renderScene(sc,sampleW,sampleH,p,{staticBackground:true,quantizeAssist:true});
       const data=sc.getImageData(0,0,sampleW,sampleH).data;
       for(let i=0;i<data.length;i+=4){
         const diff=Math.abs(data[i]-base[i])+Math.abs(data[i+1]-base[i+1])+Math.abs(data[i+2]-base[i+2]);
@@ -2792,7 +2828,7 @@ input[type="range"] { accent-color:#171717; }
 
     // Give the exact UI colors enough weight to survive the photo-heavy quantizer
     // without forcibly replacing photo palette entries.
-    ['#ffffff','#111317','#1d1f24','#a8abb0','#b3b6ba','#f0f0f4','#0a84ff',state.notifyIconColor].forEach(c=>addPaletteAnchor(stats,c,900));
+    ['#ffffff','#111317','#1d1f24','#a8abb0','#b3b6ba','#f0f0f4','#0a84ff',state.notifyIconColor,'#f8f8fa','#f4f4f6','#e8ebef','#dbe4ee'].forEach(c=>addPaletteAnchor(stats,c,900));
     state.messages.forEach(msg=>{
       addPaletteAnchor(stats,msg.bgColor || (msg.blue?'#0a84ff':'#f0f0f4'),900);
       addPaletteAnchor(stats,msg.textColor || (msg.blue?'#ffffff':'#111317'),900);
@@ -3098,7 +3134,7 @@ input[type="range"] { accent-color:#171717; }
         // Center sampling within each GIF frame gives smoother motion than sampling
         // exactly on the left edge of each time slice.
         const p=(i+.5)/total;
-        renderScene(wc,w,h,p,{staticBackground:true});
+        renderScene(wc,w,h,p,{staticBackground:true,quantizeAssist:true});
         const rgba=wc.getImageData(0,0,w,h).data;
 
         if(i===0){
