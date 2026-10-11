@@ -987,7 +987,8 @@ input[type="range"] { accent-color:#171717; }
           <label>해상도
             <select id="exportSize">
               <option value="1024x683">1024 × 683</option>
-              <option value="1536x1024" selected>1536 × 1024</option>
+              <option value="1280x853" selected>1280 × 853</option>
+              <option value="1536x1024">1536 × 1024</option>
               <option value="2048x1365">2048 × 1365</option>
             </select>
           </label>
@@ -1088,7 +1089,7 @@ input[type="range"] { accent-color:#171717; }
     loopMode: 'fade',
     xQuality: 'quality',
     duration: 4.5,
-    exportSize: '1536x1024',
+    exportSize: '1280x853',
     exportFps: 15,
     bgRevision: 0
   };
@@ -2500,7 +2501,7 @@ input[type="range"] { accent-color:#171717; }
     try{ await presetDelete(AUTOSAVE_NAME); }catch(e){ console.error(e); }
   }
   async function refreshPresetList(selectName=''){try{const list=(await presetGetAll()).filter(p=>p.name!==AUTOSAVE_NAME).sort((a,b)=>(b.savedAt||0)-(a.savedAt||0));const sel=$('#savedPreset');sel.innerHTML='<option value="">저장된 프리셋</option>';list.forEach(p=>{const o=document.createElement('option');o.value=p.name;o.textContent=p.name;sel.appendChild(o);});if(selectName)sel.value=selectName;}catch(e){console.error(e);}}
-  function syncControlsFromState(){if(state.bgMode==='blur')state.bgMode='single';$$('[data-bg-mode]').forEach(b=>b.classList.toggle('active',b.dataset.bgMode===state.bgMode));updateBackgroundEffectControls();$('#featherRange').value=state.feather;$('#softnessRange').value=state.softness;$('#boothScale').value=Math.round(state.boothScale*100);$('#boothX').value=clamp(state.boothX,-180,180);$('#boothY').value=clamp(state.boothY,-140,140);$('#heartStickerEnabled').checked=!!state.stickerEnabled;$('#stickerScale').value=Math.round((state.stickerScale||1)*100);$('#stickerCount').value=Math.round(state.stickerCount||11);$('#stickerSpeed').value=Math.round((state.stickerSpeed||1.0)*100);$('#stickerX').value=clamp(state.stickerX||0,-240,240);$('#stickerY').value=clamp(state.stickerY||0,-360,360);$('#heartColor').value=normalizeHexColor(state.heartColor, '#e980aa');$('#notifyName').value=state.notifyName;$('#notifyText').value=state.notifyText;$('#notifyIconColor').value=normalizeHexColor(state.notifyIconColor, '#52ef6f');$('#animationPreset').value=state.animationPreset;$('#notifyGap').value=state.notifyGap;$('#notifyGapValue').textContent=`${state.notifyGap.toFixed(2)}초`;$('#holdTime').value=String(state.holdTime);$('#loopMode').value=state.loopMode;$('#xQuality').value=state.xQuality;$('#durationRange').value=state.duration;$('#durationValue').textContent=`${state.duration.toFixed(1)}초`;$('#exportSize').value=state.exportSize||'1536x1024';$('#exportFps').value=String(state.exportFps||15);renderMessageEditor();renderBgThumbs();updateFileStatus();emptyHint.hidden=!!state.bgImages.length;invalidateBackground();}
+  function syncControlsFromState(){if(state.bgMode==='blur')state.bgMode='single';$$('[data-bg-mode]').forEach(b=>b.classList.toggle('active',b.dataset.bgMode===state.bgMode));updateBackgroundEffectControls();$('#featherRange').value=state.feather;$('#softnessRange').value=state.softness;$('#boothScale').value=Math.round(state.boothScale*100);$('#boothX').value=clamp(state.boothX,-180,180);$('#boothY').value=clamp(state.boothY,-140,140);$('#heartStickerEnabled').checked=!!state.stickerEnabled;$('#stickerScale').value=Math.round((state.stickerScale||1)*100);$('#stickerCount').value=Math.round(state.stickerCount||11);$('#stickerSpeed').value=Math.round((state.stickerSpeed||1.0)*100);$('#stickerX').value=clamp(state.stickerX||0,-240,240);$('#stickerY').value=clamp(state.stickerY||0,-360,360);$('#heartColor').value=normalizeHexColor(state.heartColor, '#e980aa');$('#notifyName').value=state.notifyName;$('#notifyText').value=state.notifyText;$('#notifyIconColor').value=normalizeHexColor(state.notifyIconColor, '#52ef6f');$('#animationPreset').value=state.animationPreset;$('#notifyGap').value=state.notifyGap;$('#notifyGapValue').textContent=`${state.notifyGap.toFixed(2)}초`;$('#holdTime').value=String(state.holdTime);$('#loopMode').value=state.loopMode;$('#xQuality').value=state.xQuality;$('#durationRange').value=state.duration;$('#durationValue').textContent=`${state.duration.toFixed(1)}초`;$('#exportSize').value=state.exportSize||'1280x853';$('#exportFps').value=String(state.exportFps||15);renderMessageEditor();renderBgThumbs();updateFileStatus();emptyHint.hidden=!!state.bgImages.length;invalidateBackground();}
   $('#savePreset').addEventListener('click',async()=>{const name=$('#presetName').value.trim();if(!name){toast('프리셋 이름을 입력해주세요.');return;}try{const mode=await presetPut({name,savedAt:Date.now(),settings:captureSettings(),backgrounds:state.bgImages.filter(x=>x.blob).map(x=>({name:x.name,blob:x.blob})),booth:state.boothImage?.blob?{name:state.boothImage.name,blob:state.boothImage.blob}:null});await refreshPresetList(name);toast(mode==='full'?'프리셋을 이미지까지 저장했습니다.':'이 브라우저에서는 이미지 제외 설정을 저장했습니다.');}catch(e){console.error(e);toast('프리셋 저장 공간이 부족하거나 사용할 수 없습니다.');}});
   $('#loadPreset').addEventListener('click',async()=>{const name=$('#savedPreset').value;if(!name){toast('불러올 프리셋을 선택해주세요.');return;}try{const all=await presetGetAll();const p=all.find(x=>x.name===name);if(!p)return;state.bgImages.forEach(x=>x.url&&URL.revokeObjectURL(x.url));if(state.boothImage?.url)URL.revokeObjectURL(state.boothImage.url);Object.assign(state,p.settings||{});if(state.bgMode==='blur')state.bgMode='single';state.messages=(p.settings?.messages||state.messages).map(m=>({...m,id:m.id||`m${Math.random().toString(36).slice(2)}`}));state.bgImages=await Promise.all((p.backgrounds||[]).map(x=>imageFromFile(x.blob,x.name)));state.boothImage=p.booth?await imageFromFile(p.booth.blob,p.booth.name):null;ensureDurationForTimeline();syncControlsFromState();restartAnimation();scheduleAutosave();toast('프리셋을 불러왔습니다.');}catch(e){console.error(e);toast('프리셋을 불러오지 못했습니다.');}});
   $('#deletePreset').addEventListener('click',async()=>{const name=$('#savedPreset').value;if(!name){toast('삭제할 프리셋을 선택해주세요.');return;}try{await presetDelete(name);await refreshPresetList();toast('프리셋을 삭제했습니다.');}catch(e){console.error(e);toast('프리셋을 삭제하지 못했습니다.');}});
@@ -2529,45 +2530,19 @@ input[type="range"] { accent-color:#171717; }
   const DEVICE_MEMORY_GB = Number(navigator.deviceMemory || 0);
 
   function runtimeGifLimits(mode='quality') {
-    const desktopMaxW = mode==='quality' ? 1536 : mode==='balanced' ? 1408 : 1280;
-    const mobileMaxW = mode==='quality' ? 1280 : 1024;
-
-    // Desktop used to run essentially uncapped, so the encoder often tried to
-    // squeeze a 2048px-wide, photo-heavy animation into the same 15MB budget.
-    // That produced noticeably harsher palette compression on web than on mobile.
-    // Keep desktop on a tuned cap as well so both save paths land in a similar,
-    // stable quality range.
-    if(!IS_MOBILE) {
-      return {
-        maxW: desktopMaxW,
-        maxFps:15,
-        sampleW:896,
-        yieldMs:0,
-        attempts:1,
-        targetCapMb:14.86,
-        lowMemory:false
-      };
-    }
-
-    if(!IS_ANDROID) {
-      return {
-        maxW: mobileMaxW,
-        maxFps:15,
-        sampleW:704,
-        yieldMs:4,
-        attempts:1,
-        targetCapMb:14.86,
-        lowMemory:false
-      };
-    }
-
-    const lowMemory = DEVICE_MEMORY_GB > 0 && DEVICE_MEMORY_GB <= 4;
+    // Use the same export ceiling on desktop and normal mobile devices.
+    // The GIF encoder only has 256 palette entries per frame; rendering desktop
+    // at a larger raster than mobile made gradients and photographic areas show
+    // stronger banding even though the file itself was larger. Matching the raster
+    // size makes the web path use the same quantization workload as mobile.
+    const sharedMaxW = mode==='quality' ? 1280 : 1024;
+    const lowMemory = IS_ANDROID && DEVICE_MEMORY_GB > 0 && DEVICE_MEMORY_GB <= 4;
     if(lowMemory) return {maxW:960,maxFps:12,sampleW:560,yieldMs:9,attempts:1,targetCapMb:13.6,lowMemory:true};
     return {
-      maxW: mobileMaxW,
+      maxW: sharedMaxW,
       maxFps:15,
       sampleW:704,
-      yieldMs:4,
+      yieldMs:IS_MOBILE ? 4 : 0,
       attempts:1,
       targetCapMb:14.86,
       lowMemory:false
