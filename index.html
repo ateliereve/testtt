@@ -2730,78 +2730,6 @@ input[type="range"] { accent-color:#171717; }
     return buildPaletteFromHistogram(hist,256);
   }
 
-
-  function addPaletteAnchor(stats, color, weight=700){
-    const rgb=hexToRgb(normalizeHexColor(color,'#000000'));
-    const k=((rgb.r>>3)<<10)|((rgb.g>>3)<<5)|(rgb.b>>3);
-    stats.hist[k]+=weight;
-    stats.sums.r[k]+=rgb.r*weight;
-    stats.sums.g[k]+=rgb.g*weight;
-    stats.sums.b[k]+=rgb.b*weight;
-  }
-
-  async function buildStableForegroundPalette(w,h,sampleLimit=896){
-    // Build one palette for the settled Photo Booth + hearts + notification/messages.
-    // Reusing it after the booth settles prevents the same photo/highlight from being
-    // quantized to different colors in different delta frames, which is what creates
-    // persistent patch boundaries in bright areas after hearts or UI move away.
-    const sampleW=Math.min(sampleLimit,w);
-    const sampleH=Math.max(1,Math.round(h*sampleW/w));
-    const sample=document.createElement('canvas');
-    sample.width=sampleW; sample.height=sampleH;
-    const sc=sample.getContext('2d',{alpha:false,willReadFrequently:true});
-    sc.imageSmoothingEnabled=true;
-    sc.imageSmoothingQuality='high';
-
-    renderScene(sc,sampleW,sampleH,.5,{staticBackground:true,backgroundOnly:true});
-    const base=sc.getImageData(0,0,sampleW,sampleH).data;
-    const stats={
-      hist:new Uint32Array(32768),
-      sums:{r:new Uint32Array(32768),g:new Uint32Array(32768),b:new Uint32Array(32768)}
-    };
-
-    const tl=getTimeline();
-    const d=Math.max(.001,state.duration);
-    const seconds=[
-      tl.boothStart + (tl.boothEnd-tl.boothStart)*.35,
-      Math.max(tl.boothEnd+.02,tl.boothStart),
-      tl.notifyStart+.10,
-      ...tl.messageStarts.map(s=>s+.10),
-      Math.max(tl.lastEnd+.06,tl.notifyStart+.2),
-      Math.max(tl.holdStart+.05,tl.lastEnd+.1)
-    ];
-    const points=seconds.map(s=>clamp(s/d,0,1));
-    points.push(.72,.84,.94);
-    const unique=points.filter((p,i,a)=>a.findIndex(q=>Math.abs(q-p)<.015)===i);
-
-    for(const p of unique){
-      renderScene(sc,sampleW,sampleH,p,{staticBackground:true});
-      const data=sc.getImageData(0,0,sampleW,sampleH).data;
-      for(let i=0;i<data.length;i+=4){
-        const diff=Math.abs(data[i]-base[i])+Math.abs(data[i+1]-base[i+1])+Math.abs(data[i+2]-base[i+2]);
-        if(diff<8) continue;
-        const r=data[i],g=data[i+1],b=data[i+2];
-        const k=((r>>3)<<10)|((g>>3)<<5)|(b>>3);
-        stats.hist[k]++;
-        stats.sums.r[k]+=r;
-        stats.sums.g[k]+=g;
-        stats.sums.b[k]+=b;
-      }
-      await new Promise(r=>setTimeout(r,0));
-    }
-
-    // Give the exact UI colors enough weight to survive the photo-heavy quantizer
-    // without forcibly replacing photo palette entries.
-    ['#ffffff','#111317','#1d1f24','#a8abb0','#b3b6ba','#f0f0f4','#0a84ff',state.notifyIconColor].forEach(c=>addPaletteAnchor(stats,c,900));
-    state.messages.forEach(msg=>{
-      addPaletteAnchor(stats,msg.bgColor || (msg.blue?'#0a84ff':'#f0f0f4'),900);
-      addPaletteAnchor(stats,msg.textColor || (msg.blue?'#ffffff':'#111317'),900);
-    });
-
-    sample.width=1; sample.height=1;
-    return buildPaletteFromHistogram(stats.hist,255,stats.sums);
-  }
-
   function buildPaletteLookup(palette,hist=null,colorCount=256){
     const lut=new Uint8Array(32768);
     const count=clamp(Math.round(colorCount||256),1,256);
@@ -2968,22 +2896,7 @@ input[type="range"] { accent-color:#171717; }
     writer.byte(8); writeSubBlocks(writer,lzwEncode(indices,8));
   }
 
-  function getSettledBoothRect(w,h,pad=2){
-    const s0=w/1500;
-    const bw=744*s0*state.boothScale;
-    const bh=570*s0*state.boothScale;
-    const x=(128+state.boothX)*s0;
-    const y=(205+state.boothY)*s0;
-    const px=Math.max(1,Math.round(pad*s0));
-    const x0=clamp(Math.floor(x)-px,0,w-1);
-    const y0=clamp(Math.floor(y)-px,0,h-1);
-    const x1=clamp(Math.ceil(x+bw)+px,0,w);
-    const y1=clamp(Math.ceil(y+bh)+px,0,h);
-    if(x1<=x0 || y1<=y0) return null;
-    return {x:x0,y:y0,w:x1-x0,h:y1-y0};
-  }
-
-  function cropChangedRGBA(current, previous, w, h, pad=3, threshold=3, forceRect=null){
+  function cropChangedRGBA(current, previous, w, h, pad=3, threshold=3){
     if(!previous || previous.length!==current.length){
       const mask=new Uint8Array(w*h); mask.fill(1);
       return {data:current,mask,x:0,y:0,w,h};
@@ -3001,24 +2914,6 @@ input[type="range"] { accent-color:#171717; }
         if(y<minY) minY=y; if(y>maxY) maxY=y;
       }
     }
-
-    // Once the Photo Booth entrance has finished, refresh its complete rectangle in
-    // one local palette. This replaces the small palette patches accumulated during
-    // the entrance with one consistent 255-color rendering, without error diffusion
-    // or any extra GIF frame/timing changes.
-    if(forceRect){
-      const fx0=clamp(Math.floor(forceRect.x),0,w-1);
-      const fy0=clamp(Math.floor(forceRect.y),0,h-1);
-      const fx1=clamp(Math.ceil(forceRect.x+forceRect.w)-1,0,w-1);
-      const fy1=clamp(Math.ceil(forceRect.y+forceRect.h)-1,0,h-1);
-      for(let yy=fy0;yy<=fy1;yy++){
-        const row=yy*w;
-        for(let xx=fx0;xx<=fx1;xx++) changed[row+xx]=1;
-      }
-      minX=Math.min(minX,fx0); minY=Math.min(minY,fy0);
-      maxX=Math.max(maxX,fx1); maxY=Math.max(maxY,fy1);
-    }
-
     if(maxX<0 || maxY<0){
       return {data:new Uint8ClampedArray(current.slice(0,4)),mask:new Uint8Array([0]),x:0,y:0,w:1,h:1};
     }
@@ -3085,14 +2980,6 @@ input[type="range"] { accent-color:#171717; }
       const writer=new ByteWriter();
       let previousRgba=null;
       let started=false;
-      let boothPaletteRefreshed=false;
-
-      // Prepare a single post-settle foreground palette once. The entrance may still
-      // use frame-adaptive palettes, but after the booth is fully visible every booth,
-      // heart and message delta is mapped through the same colors for consistency.
-      const stableForegroundPalette=await buildStableForegroundPalette(w,h,runtime?.sampleW||896);
-      const stableForegroundLut=buildPaletteLookup(stableForegroundPalette,null,255);
-      const stableForegroundLocalPalette=makeTransparentLocalPalette(stableForegroundPalette);
 
       for(let i=0;i<total;i++){
         // Center sampling within each GIF frame gives smoother motion than sampling
@@ -3114,32 +3001,13 @@ input[type="range"] { accent-color:#171717; }
           // Moving content gets a local palette, while unchanged background pixels remain
           // exactly as encoded in frame 1. Keep photographic deltas on direct palette
           // mapping: masked error diffusion can create dark speckle artifacts in GIF deltas.
-          const sceneP=mapLoopProgress(p);
-          const sceneSec=sceneP*duration;
-          const tl=getTimeline();
-          const duringBoothEntrance=sceneSec<=tl.boothEnd+.03;
-          const refreshBooth=!boothPaletteRefreshed && sceneSec>=tl.boothEnd;
-          const forceBoothRect=refreshBooth ? getSettledBoothRect(w,h,2) : null;
-
-          // During the entrance keep the adaptive palette because the booth is moving over
-          // the background. From the first settled frame onward, switch permanently to one
-          // stable foreground palette. This prevents bright Photo Booth pixels revealed by
-          // fading hearts from being written back with a different palette each frame.
-          const uiActive=sceneSec>=tl.notifyStart-.04;
-          const delta=cropChangedRGBA(rgba,previousRgba,w,h,uiActive?4:3,duringBoothEntrance?1:(uiActive?1:3),forceBoothRect);
-          let indexed,localPalette;
-          if(duringBoothEntrance && !refreshBooth){
-            const local=buildAdaptivePalette(delta.data,255,delta.mask);
-            const localLut=buildPaletteLookup(local.palette,local.hist,255);
-            localPalette=makeTransparentLocalPalette(local.palette);
-            indexed=rgbaToAdaptiveMasked(delta.data,delta.w,delta.h,localLut,delta.mask,1);
-          } else {
-            localPalette=stableForegroundLocalPalette;
-            indexed=rgbaToAdaptiveMasked(delta.data,delta.w,delta.h,stableForegroundLut,delta.mask,1);
-          }
+          const delta=cropChangedRGBA(rgba,previousRgba,w,h,3,3);
+          const local=buildAdaptivePalette(delta.data,255,delta.mask);
+          const localLut=buildPaletteLookup(local.palette,local.hist,255);
+          const localPalette=makeTransparentLocalPalette(local.palette);
+          const indexed=rgbaToAdaptiveMasked(delta.data,delta.w,delta.h,localLut,delta.mask,1);
           if(!started){ beginGif(writer,w,h,localPalette); started=true; }
           addGifFrame(writer,indexed,delta.w,delta.h,delays[i],delta.x,delta.y,localPalette,true);
-          if(refreshBooth) boothPaletteRefreshed=true;
         }
 
         previousRgba=rgba;
